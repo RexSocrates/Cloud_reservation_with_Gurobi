@@ -31,6 +31,10 @@ model = Model("heuristic_cloud_reservation")
 # define a list to store the decision variables
 timeList = []
 
+reservationDecisionVars = []
+reservedInstanceUtilizationDecisionVars = []
+onDemandInstanceDecisionVars = []
+
 # define a list to store the number of effective reserved instances in each stage
 # initialize the list with value of zero
 effectiveRI = [[]] * demandLength
@@ -45,6 +49,9 @@ computingPerformanceList = [[]] * demandLength
 # add decision variables
 for timeStage in range(0, demandLength) :
     vmTypeDecisionVarsList = []
+    reservationVarInEachTimeStage = []
+    utilizationVarInEachTimeStage = []
+    onDemandVarInEachTimeStage = []
     for i in range(0, len(VM_types)) :
         vm = VM_types[i]
         upfrontFee = vm.upfront
@@ -55,11 +62,11 @@ for timeStage in range(0, demandLength) :
         
         # add decision variables
         # initial reservation fee
-        reservation = model.addVar(lb=0.0, ub=GRB.INFINITY, obj=upfrontFee, vtype=GRB.INTEGER)
+        reservation = model.addVar(lb=0.0, ub=GRB.INFINITY, vtype=GRB.INTEGER)
         # the fee of launching a reserved instance
-        launchedResInstance = model.addVar(lb=0.0, ub=GRB.INFINITY, obj=resHourlyCharge, vtype=GRB.INTEGER)
+        launchedResInstance = model.addVar(lb=0.0, ub=GRB.INFINITY, vtype=GRB.INTEGER)
         # the fee of launching a on-demand instance
-        ondemandInstance = model.addVar(lb=0.0, ub=GRB.INFINITY, obj=ondemandCharge, vtype=GRB.INTEGER)
+        ondemandInstance = model.addVar(lb=0.0, ub=GRB.INFINITY, vtype=GRB.INTEGER)
         
         # record the effective instance and the computing performance
         for currentTimeStage in range(timeStage, min(demandLength, timeStage + reservationLength-1)) :
@@ -69,8 +76,13 @@ for timeStage in range(0, demandLength) :
         
         
         # store the decision variables in a list
+        utilizationVarInEachTimeStage.append(launchedResInstance)
+        onDemandVarInEachTimeStage.append(ondemandInstance)
+
         vmTypeDecisionVarsList.append([reservation, launchedResInstance, ondemandInstance])
         
+    reservedInstanceUtilizationDecisionVars.append(utilizationVarInEachTimeStage)
+    onDemandInstanceDecisionVars.append(onDemandVarInEachTimeStage)
     timeList.append(vmTypeDecisionVarsList)
 
 # define a list that represent the effective RI in each time stage
@@ -81,23 +93,45 @@ for timeStage in range(0, demandLength) :
 model.update()
 
 # convert to one-dimension list
+# the initial reservation fee has not been added
 decisionVars = []
 coefficient = []
 
-for timeStage in range(0, demandLength) :
-    vmDecisionVarsList = timeList[timeStage]
-    for i in range(0, len(VM_types)) :
-        vm = VM_types[i]
-        upfrontFee = vm.upfront
-        resRate = vm.resHourlyCharge
-        onDemandRate = vm.onDemandHourlyCharge
-        
-        vmDecisionVars = vmDecisionVarsList[i]
-        decisionVars.extend(vmDecisionVars)
-        coefficient.append(upfrontFee)
-        coefficient.append(resRate)
-        coefficient.append(onDemandRate)
+# used for that constraint that the sum of reserved and on-demand instance commputing capacities should greater than demand
+vmDecisionVars = []
+vmDecisionVarsCoefficient = []
 
+
+
+for timeStageIndex in range(0, demandLength) :
+    utilizationVarInEachTimeStage = reservedInstanceUtilizationDecisionVars[timeStageIndex]
+    onDemandVarInEachTimeStage = onDemandInstanceDecisionVars[timeStageIndex]
+
+    vmDecisionVarsInEachTimeStage = []
+    vmDecisionVarsCoefficientInEachTimeStage = []
+
+    for vmIndex in range(0 ,len(VM_types)) :
+
+        # the utilization fee of each kind of instance
+        vm = VM_types[vmIndex]
+        reservedInstanceUtilizationFee = vm.resHourlyCharge
+        onDemandFee = vm.onDemandHourlyCharge
+        computingPerformance = vm.performance
+
+        coefficient.extend([reservedInstanceUtilizationFee, onDemandFee])
+        vmDecisionVarsCoefficientInEachTimeStage.append(computingPerformance)
+        vmDecisionVarsCoefficientInEachTimeStage.append(computingPerformance)
+
+        # the decision variables of each kind of instance
+        vmUtilizationVar = utilizationVarInEachTimeStage[vmIndex]
+        onDemandVar = onDemandVarInEachTimeStage[vmIndex]
+
+        decisionVars.extend([vmUtilizationVar, onDemandVar])
+        vmDecisionVarsInEachTimeStage.append(vmUtilizationVar)
+        vmDecisionVarsInEachTimeStage.append(onDemandVar)
+    
+    vmDecisionVars.append(vmDecisionVarsInEachTimeStage)
+    vmDecisionVarsCoefficient.append(vmDecisionVarsCoefficientInEachTimeStage)
 
 
 # add objective function
@@ -107,6 +141,7 @@ model.setObjective(quicksum(coefficient[i] * decisionVars[i] for i in range(0, l
 # non-negative constraints
 for var in decisionVars :
     model.addConstr(var, GRB.GREATER_EQUAL, 0)
+
     
 # the number of launched reserved instances cannot exceed the effective reserved instances
 launchedReservedInstanceDecisionVars = []
@@ -119,11 +154,9 @@ for timeStage in range(0, len(timeList)) :
 
     
 # the sum of reserved and on-demand instances should be greater than or equal to the demand
+for timeStageIndex in range(0, demandLength) :
+    utilizedVmDecisionVars = vmDecisionVars[timeStageIndex]
+    utilizedVmCoefficient = vmDecisionVarsCoefficient[timeStageIndex]
+    model.addConstr(quicksum(utilizedVmDecisionVars[i] * utilizedVmCoefficient[i] for i in range(0, len(utilizedVmDecisionVars))), GRB.GREATER_EQUAL, demandList[timeStageIndex])
 
-# define a list that contains reserved instance utilization variables and on-demand variables
 
-
-'''
-for timeStage in range(0, demandLength) :
-    model.addConstr(quicksum(computingPerformanceList[timeStage]), GRB.GREATER_EQUAL, demandList[timeStage])
-'''
