@@ -36,24 +36,22 @@ reservedInstanceUtilizationDecisionVars = []
 onDemandInstanceDecisionVars = []
 
 # define a list to store the number of effective reserved instances in each stage
-# initialize the list with value of zero
-effectiveRI = [[]] * demandLength
-# define a list to store the computing performance (not the number of VM)
-computingPerformanceList = [[]] * demandLength
+# initialize the effective VM list with a dictionary at each time stage
+effectiveRI = [{insType : [] for insType in VM_type_name}] * demandLength
 
-# define a list containing lot of dictionaries to represent the effective reserved instances in each time stage
-# effectiveRI_dictList = [{insType :[] for insType in VM_type_name}] * demandLength
-# computingPerformanceList_dictList = [{insType : []} for insType in VM_type_name] * demandLength
+
 
 
 # add decision variables
 for timeStage in range(0, demandLength) :
     vmTypeDecisionVarsList = []
-    reservationVarInEachTimeStage = []
-    utilizationVarInEachTimeStage = []
-    onDemandVarInEachTimeStage = []
+    reservationVarAtEachTimeStage = []
+    utilizationVarAtEachTimeStage = []
+    onDemandVarAtEachTimeStage = []
+
     for i in range(0, len(VM_types)) :
         vm = VM_types[i]
+        insTypeName = vm.insType
         upfrontFee = vm.upfront
         resHourlyCharge = vm.resHourlyCharge
         ondemandCharge = vm.onDemandHourlyCharge
@@ -70,19 +68,18 @@ for timeStage in range(0, demandLength) :
         
         # record the effective instance and the computing performance
         for currentTimeStage in range(timeStage, min(demandLength, timeStage + reservationLength-1)) :
-            
-            effectiveRI[currentTimeStage].append(reservation)
-            computingPerformanceList[currentTimeStage].append(reservation * computingPerformance)
-        
+            effectiveVmDicAtCurrentTimeStage = effectiveRI[currentTimeStage]
+            effectiveVmListForInstanceType = effectiveVmDicAtCurrentTimeStage[insTypeName]
+            effectiveVmListForInstanceType.append(reservation)
         
         # store the decision variables in a list
-        utilizationVarInEachTimeStage.append(launchedResInstance)
-        onDemandVarInEachTimeStage.append(ondemandInstance)
+        utilizationVarAtEachTimeStage.append(launchedResInstance)
+        onDemandVarAtEachTimeStage.append(ondemandInstance)
 
         vmTypeDecisionVarsList.append([reservation, launchedResInstance, ondemandInstance])
         
-    reservedInstanceUtilizationDecisionVars.append(utilizationVarInEachTimeStage)
-    onDemandInstanceDecisionVars.append(onDemandVarInEachTimeStage)
+    reservedInstanceUtilizationDecisionVars.append(utilizationVarAtEachTimeStage)
+    onDemandInstanceDecisionVars.append(onDemandVarAtEachTimeStage)
     timeList.append(vmTypeDecisionVarsList)
 
 # define a list that represent the effective RI in each time stage
@@ -104,11 +101,11 @@ vmDecisionVarsCoefficient = []
 
 
 for timeStageIndex in range(0, demandLength) :
-    utilizationVarInEachTimeStage = reservedInstanceUtilizationDecisionVars[timeStageIndex]
-    onDemandVarInEachTimeStage = onDemandInstanceDecisionVars[timeStageIndex]
+    utilizationVarAtEachTimeStage = reservedInstanceUtilizationDecisionVars[timeStageIndex]
+    onDemandVarAtEachTimeStage = onDemandInstanceDecisionVars[timeStageIndex]
 
-    vmDecisionVarsInEachTimeStage = []
-    vmDecisionVarsCoefficientInEachTimeStage = []
+    vmDecisionVarsAtEachTimeStage = []
+    vmDecisionVarsCoefficientAtEachTimeStage = []
 
     for vmIndex in range(0 ,len(VM_types)) :
 
@@ -119,19 +116,19 @@ for timeStageIndex in range(0, demandLength) :
         computingPerformance = vm.performance
 
         coefficient.extend([reservedInstanceUtilizationFee, onDemandFee])
-        vmDecisionVarsCoefficientInEachTimeStage.append(computingPerformance)
-        vmDecisionVarsCoefficientInEachTimeStage.append(computingPerformance)
+        vmDecisionVarsCoefficientAtEachTimeStage.append(computingPerformance)
+        vmDecisionVarsCoefficientAtEachTimeStage.append(computingPerformance)
 
         # the decision variables of each kind of instance
-        vmUtilizationVar = utilizationVarInEachTimeStage[vmIndex]
-        onDemandVar = onDemandVarInEachTimeStage[vmIndex]
+        vmUtilizationVar = utilizationVarAtEachTimeStage[vmIndex]
+        onDemandVar = onDemandVarAtEachTimeStage[vmIndex]
 
         decisionVars.extend([vmUtilizationVar, onDemandVar])
-        vmDecisionVarsInEachTimeStage.append(vmUtilizationVar)
-        vmDecisionVarsInEachTimeStage.append(onDemandVar)
+        vmDecisionVarsAtEachTimeStage.append(vmUtilizationVar)
+        vmDecisionVarsAtEachTimeStage.append(onDemandVar)
     
-    vmDecisionVars.append(vmDecisionVarsInEachTimeStage)
-    vmDecisionVarsCoefficient.append(vmDecisionVarsCoefficientInEachTimeStage)
+    vmDecisionVars.append(vmDecisionVarsAtEachTimeStage)
+    vmDecisionVarsCoefficient.append(vmDecisionVarsCoefficientAtEachTimeStage)
 
 
 # add objective function
