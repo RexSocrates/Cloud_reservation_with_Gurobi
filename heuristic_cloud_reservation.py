@@ -82,11 +82,6 @@ for timeStage in range(0, demandLength) :
     onDemandInstanceDecisionVars.append(onDemandVarAtEachTimeStage)
     timeList.append(vmTypeDecisionVarsList)
 
-# define a list that represent the effective RI in each time stage
-for timeStage in range(0, demandLength) :
-    for i in range(0, len(VM_types)) :
-        # define a var to represent the upper bound of the launched reserved instances in each time stage
-
 model.update()
 
 # convert to one-dimension list
