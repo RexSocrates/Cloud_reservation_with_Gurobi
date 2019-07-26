@@ -165,3 +165,5 @@ for timeStageIndex in range(0, demandLength) :
     model.addConstr(quicksum(utilizedVmDecisionVars[i] * utilizedVmCoefficient[i] for i in range(0, len(utilizedVmDecisionVars))), GRB.GREATER_EQUAL, demandList[timeStageIndex])
 
 
+model.optimize()
+print("Objective function value : ", model.objVal)
