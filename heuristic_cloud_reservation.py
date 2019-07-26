@@ -40,8 +40,6 @@ onDemandInstanceDecisionVars = []
 effectiveRI = [{insType : [] for insType in VM_type_name}] * demandLength
 
 
-
-
 # add decision variables
 for timeStage in range(0, demandLength) :
     vmTypeDecisionVarsList = []
@@ -73,11 +71,13 @@ for timeStage in range(0, demandLength) :
             effectiveVmListForInstanceType.append(reservation)
         
         # store the decision variables in a list
+        reservationVarAtEachTimeStage.append(reservation)
         utilizationVarAtEachTimeStage.append(launchedResInstance)
         onDemandVarAtEachTimeStage.append(ondemandInstance)
 
         vmTypeDecisionVarsList.append([reservation, launchedResInstance, ondemandInstance])
-        
+
+    reservationDecisionVars.append(reservationVarAtEachTimeStage)
     reservedInstanceUtilizationDecisionVars.append(utilizationVarAtEachTimeStage)
     onDemandInstanceDecisionVars.append(onDemandVarAtEachTimeStage)
     timeList.append(vmTypeDecisionVarsList)
@@ -91,16 +91,19 @@ model.update()
 
 # convert to one-dimension list
 # the initial reservation fee has not been added
+# objective function : instance cost function
+# constraint 1 : non-negative integer constraint
 decisionVars = []
 coefficient = []
 
 # used for that constraint that the sum of reserved and on-demand instance commputing capacities should greater than demand
+# constraint 3
 vmDecisionVars = []
+# decision variable coefficients : computing performance of each instance type
 vmDecisionVarsCoefficient = []
 
-
-
 for timeStageIndex in range(0, demandLength) :
+    reservationVarAtEachTimeStage = reservationDecisionVars[timeStageIndex]
     utilizationVarAtEachTimeStage = reservedInstanceUtilizationDecisionVars[timeStageIndex]
     onDemandVarAtEachTimeStage = onDemandInstanceDecisionVars[timeStageIndex]
 
@@ -111,19 +114,21 @@ for timeStageIndex in range(0, demandLength) :
 
         # the utilization fee of each kind of instance
         vm = VM_types[vmIndex]
+        upfrontFee = vm.upfront
         reservedInstanceUtilizationFee = vm.resHourlyCharge
         onDemandFee = vm.onDemandHourlyCharge
         computingPerformance = vm.performance
 
-        coefficient.extend([reservedInstanceUtilizationFee, onDemandFee])
+        coefficient.extend([upfrontFee, reservedInstanceUtilizationFee, onDemandFee])
         vmDecisionVarsCoefficientAtEachTimeStage.append(computingPerformance)
         vmDecisionVarsCoefficientAtEachTimeStage.append(computingPerformance)
 
         # the decision variables of each kind of instance
+        reservationVar = reservationVarAtEachTimeStage[vmIndex]
         vmUtilizationVar = utilizationVarAtEachTimeStage[vmIndex]
         onDemandVar = onDemandVarAtEachTimeStage[vmIndex]
 
-        decisionVars.extend([vmUtilizationVar, onDemandVar])
+        decisionVars.extend([reservationVar, vmUtilizationVar, onDemandVar])
         vmDecisionVarsAtEachTimeStage.append(vmUtilizationVar)
         vmDecisionVarsAtEachTimeStage.append(onDemandVar)
     
@@ -141,13 +146,16 @@ for var in decisionVars :
 
     
 # the number of launched reserved instances cannot exceed the effective reserved instances
-launchedReservedInstanceDecisionVars = []
-for timeStage in range(0, len(timeList)) :
-    vmTypeDecisionVarsList = timeList[timeStage]
-    for vm_type_index in range(0, len(vmTypeDecisionVarsList)) :
-        vm = vmTypeDecisionVarsList[vm_type_index]
-        launchedReservedInstances = vm[1]
-        launchedReservedInstanceDecisionVars.append(launchedReservedInstances)
+for timeStageIndex in range(0, demandLength) :
+    effectiveVmAtEachTimeStage = effectiveRI[timeStageIndex]
+    utilizationVarAtEachTimeStage = reservedInstanceUtilizationDecisionVars[timeStageIndex]
+
+    for instanceTypeIndex in range(0, len(VM_type_name)) :
+        instanceTypeName = VM_type_name[instanceTypeIndex]
+        effectiveReservationVarForInstance = effectiveVmAtEachTimeStage[instanceTypeName]
+        utilizationVar = utilizationVarAtEachTimeStage[instanceTypeIndex]
+
+        model.addConstr(utilizationVar, GRB.LESS_EQUAL, quicksum(reservationVar for reservationVar in effectiveReservationVarForInstance))
 
     
 # the sum of reserved and on-demand instances should be greater than or equal to the demand
