@@ -10,16 +10,17 @@ from VMClass import *
 import random
 
 # generate the demand
-demandLength = 24*365
-# demandList = [15, 14, 18, 14, 12, 15, 17, 20, 11, 12, 19, 15, 10, 14, 11, 14, 11, 19, 13, 17, 17, 17, 19, 16]
-demandList = [random.randint(10, 20) for _ in range(0, demandLength)]
+demandLength = 5
+demandList = [15, 12, 10, 13, 13]
+# demandList = [random.randint(10, 20) for _ in range(0, demandLength)]
 
 # VM Class : VM type, upfrontFee, reservation hourly fee, on-demand hourly fee, reservation length, computing performance
 # define the VM types and configure the reservation contracts data including upfront fee monthly fee and on-demand fee
-type0 = VMClass("t3.nano_noUpfront", 0, 3.36, 0.0068, 30*24, 6)
-type1 = VMClass("t3.nano_partial", 19, 1.61, 0.0068, 30*24, 6)
-type2 = VMClass("t3.nano_all", 38, 0.0, 0.0068, 30*24, 6)
-VM_types = [type0, type1, type2]
+# type0 = VMClass("t3.nano_noUpfront", 0, 3.36, 0.0068, 30*24, 6)
+# type1 = VMClass("t3.nano_partial", 19, 1.61, 0.0068, 2, 6)
+# type2 = VMClass("t3.nano_all", 38, 0.0, 0.0068, 3, 6)
+type2 = VMClass("t3.nano_all", 2, 0.0, 1, 3, 6)
+VM_types = [type2]
 
 VM_type_name = []
 for vm in VM_types :
@@ -37,7 +38,11 @@ onDemandInstanceDecisionVars = []
 
 # define a list to store the number of effective reserved instances in each stage
 # initialize the effective VM list with a dictionary at each time stage
-effectiveRI = [{insType : [] for insType in VM_type_name}] * demandLength
+# effectiveRI = [{insType : [] for insType in VM_type_name}] * demandLength
+effectiveRI = []
+for timeStageIndex in range(0, demandLength) :
+    currentTimeStageDic = {insType : [] for insType in VM_type_name}
+    effectiveRI.append(currentTimeStageDic)
 
 
 # add decision variables
@@ -56,6 +61,7 @@ for timeStage in range(0, demandLength) :
         reservationLength = vm.reservationLength
         computingPerformance = vm.performance
         
+        
         # add decision variables
         # initial reservation fee
         reservation = model.addVar(lb=0.0, ub=GRB.INFINITY, vtype=GRB.INTEGER)
@@ -65,10 +71,22 @@ for timeStage in range(0, demandLength) :
         ondemandInstance = model.addVar(lb=0.0, ub=GRB.INFINITY, vtype=GRB.INTEGER)
         
         # record the effective instance and the computing performance
-        for currentTimeStage in range(timeStage, min(demandLength, timeStage + reservationLength-1)) :
+        '''
+        print("Time stage : ", timeStage)
+        print("End time stage :", min(demandLength, timeStage + reservationLength - 1))
+        '''
+        
+        for currentTimeStage in range(timeStage, min(demandLength, timeStage + reservationLength)) :
+            currentTimeStageDic = effectiveRI[currentTimeStage]
+            currentTimeStageInstanceList = currentTimeStageDic[insTypeName]
+            currentTimeStageInstanceList.append(reservation)
+            '''
             effectiveVmDicAtCurrentTimeStage = effectiveRI[currentTimeStage]
             effectiveVmListForInstanceType = effectiveVmDicAtCurrentTimeStage[insTypeName]
             effectiveVmListForInstanceType.append(reservation)
+            '''
+        
+        
         
         # store the decision variables in a list
         reservationVarAtEachTimeStage.append(reservation)
@@ -158,6 +176,8 @@ for timeStageIndex in range(0, demandLength) :
     utilizedVmDecisionVars = vmDecisionVars[timeStageIndex]
     utilizedVmCoefficient = vmDecisionVarsCoefficient[timeStageIndex]
     model.addConstr(quicksum(utilizedVmDecisionVars[i] * utilizedVmCoefficient[i] for i in range(0, len(utilizedVmDecisionVars))), GRB.GREATER_EQUAL, demandList[timeStageIndex])
+
+model.write("cloud_reservation.lp")
 
 
 model.optimize()
